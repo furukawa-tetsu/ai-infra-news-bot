@@ -89,6 +89,11 @@ export default {
     env: Env,
     _ctx: ExecutionContext
   ): Promise<void> {
+    console.log("Cron fired:", {
+      cron: _event.cron,
+      scheduledTime: new Date(_event.scheduledTime).toISOString(),
+      now: new Date().toISOString(),
+  });
     await runPipeline(env);
   },
 };
@@ -148,21 +153,34 @@ async function runPipeline(env: Env) {
       continue;
     }
 
+  console.log("Insert article:", {
+    titleType: typeof article.title,
+    urlType: typeof article.url,
+    sourceType: typeof article.source,
+    publishedAtType: typeof article.publishedAt,
+    categoryType: typeof analysis.category,
+    implicationType: typeof analysis.implication,
+
+    title: article.title,
+    url: article.url,
+    source: article.source,
+  });
+
     await env.DB.prepare(`
-      INSERT INTO articles (
+      INSERT OR IGNORE INTO articles (
         id, title, url, source, published_at,
         summary, category, relevance_score, implication
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       crypto.randomUUID(),
-      article.title,
-      article.url,
-      article.source,
-      article.publishedAt ?? null,
-      JSON.stringify(analysis.summary_ja),
-      analysis.category,
-      analysis.relevance_score,
-      analysis.implication
+      toDbText(article.title),
+      toDbText(article.url),
+      toDbText(article.source),
+      article.publishedAt ? toDbText(article.publishedAt) : null,
+      JSON.stringify(analysis.summary_ja ?? []),
+      toDbText(analysis.category),
+      Number(analysis.relevance_score ?? 1),
+      toDbText(analysis.implication)
     ).run();
 
     inserted++;
@@ -456,7 +474,8 @@ async function generateFeedXml(env: Env, origin: string): Promise<string> {
       <title>${escapeXml(`[${article.category}] ${article.title}`)}</title>
       <link>${escapeXml(article.url)}</link>
       <guid isPermaLink="false">${escapeXml(article.url)}</guid>
-      <pubDate>${new Date(article.published_at || article.created_at).toUTCString()}</pubDate>
+      <pubDate>${new Date(article.created_at || Date.now()).toUTCString()}</pubDate>
+
       <description><![CDATA[
 重要度: ${article.relevance_score}/5
 
@@ -509,4 +528,13 @@ function safeJsonArray(value: string): string[] {
   } catch {
     return [];
   }
+}
+
+function toDbText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
 }
