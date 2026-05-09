@@ -165,3 +165,10 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# local secrets
+.dev.vars
+.env
+.env.*
+node_modules
+.wrangler
