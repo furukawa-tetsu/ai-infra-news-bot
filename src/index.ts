@@ -160,11 +160,51 @@ async function runPipeline(env: Env) {
     };
   }
 
-  const analyses = await analyzeBatchWithOpenAI(env, candidates);
+  const analyses =
+  await analyzeBatchWithOpenAI(
+    env,
+    candidates
+  );
 
-  for (const analysis of analyses) {
-    const article = candidates[analysis.index];
+  const scored = analyses.map((analysis) => {
+    const article =
+      candidates[analysis.index];
 
+    const freshness =
+      freshnessScore(
+        article.publishedAt || ""
+      );
+
+    const category =
+      categoryWeight(
+        analysis.category
+      );
+
+    const totalScore =
+      analysis.relevance_score * 3 +
+      freshness * 2 +
+      category;
+
+    return {
+      analysis,
+      article,
+      freshness,
+      category,
+      totalScore,
+    };
+  });
+
+  scored.sort(
+    (a, b) => b.totalScore - a.totalScore
+  );
+
+  const selected =
+    scored.slice(0, 5);
+
+  for (const item of selected) {
+    const analysis = item.analysis;
+    const article = item.article;
+    
     if (!article) {
       skipped++;
       continue;
@@ -632,5 +672,70 @@ function categoryEmoji(category: string): string {
 
     default:
       return "📰";
+  }
+}
+
+function freshnessScore(dateString: string): number {
+  try {
+    const target = new Date(dateString).getTime();
+
+    if (Number.isNaN(target)) {
+      return 0;
+    }
+
+    const diffHours =
+      (Date.now() - target) / (1000 * 60 * 60);
+
+    // 24h以内
+    if (diffHours <= 24) {
+      return 5;
+    }
+
+    // 3日以内
+    if (diffHours <= 72) {
+      return 3;
+    }
+
+    // 1週間以内
+    if (diffHours <= 168) {
+      return 1;
+    }
+
+    return 0;
+
+  } catch {
+    return 0;
+  }
+}
+
+
+function categoryWeight(category: string): number {
+  switch (category) {
+    case "AI Factory":
+      return 5;
+
+    case "GPU":
+      return 5;
+
+    case "HPC":
+      return 4;
+
+    case "Networking":
+      return 4;
+
+    case "Cloud":
+      return 3;
+
+    case "Security":
+      return 3;
+
+    case "Robotics":
+      return 3;
+
+    case "Policy":
+      return 2;
+
+    default:
+      return 1;
   }
 }
