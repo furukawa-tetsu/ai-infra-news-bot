@@ -38,28 +38,50 @@ type Analysis = {
 const app = new Hono<{ Bindings: Env }>();
 
 const FEEDS = [
-    // Cloud / Edge
+  // Cloud / Edge
   "https://blog.cloudflare.com/rss/",
+  "https://blog.cloudflare.com/tag/security/rss/",
   "https://aws.amazon.com/blogs/machine-learning/feed/",
-  "https://cloud.google.com/blog/products/ai-machine-learning/rss/",
+  "https://aws.amazon.com/blogs/hpc/feed/",
+  "https://aws.amazon.com/blogs/compute/feed/",
+  "https://cloudblog.withgoogle.com/rss",
   "https://azure.microsoft.com/en-us/blog/feed/",
 
-  // GPU / AI Factory
+  // GPU / Accelerator / AI Factory
   "https://blogs.nvidia.com/feed/",
   "https://developer.nvidia.com/blog/feed/",
   "https://www.amd.com/en/rss.xml",
+  "https://community.intel.com/t5/Blogs/ct-p/blogs/rss",
 
   // AI Labs / Models
   "https://openai.com/news/rss.xml",
   "https://www.anthropic.com/news/rss.xml",
   "https://huggingface.co/blog/feed.xml",
+  "https://deepmind.google/discover/blog/rss.xml",
 
   // HPC / Infra News
   "https://www.hpcwire.com/feed/",
-  "https://www.theregister.com/software/ai_ml/headlines.atom",
+  "https://www.nextplatform.com/feed/",
+  "https://insidehpc.com/feed/",
+  "https://www.datacenterdynamics.com/en/rss/",
 
-  // Security / Infrastructure
-  "https://blog.cloudflare.com/tag/security/rss/",
+  // Enterprise / Infra / AI industry
+  "https://www.theregister.com/software/ai_ml/headlines.atom",
+  "https://www.theregister.com/data_centre/headlines.atom",
+  "https://venturebeat.com/category/ai/feed/",
+  "https://www.artificialintelligence-news.com/feed/",
+
+  // OSS / Dev Infra
+  "https://kubernetes.io/feed.xml",
+  "https://www.cncf.io/feed/",
+  "https://www.docker.com/blog/feed/",
+  "https://github.blog/feed/",
+
+  // Research / Papers
+  "https://export.arxiv.org/rss/cs.LG",
+  "https://export.arxiv.org/rss/cs.AI",
+  "https://export.arxiv.org/rss/cs.DC",
+  "https://export.arxiv.org/rss/cs.RO",
 ];
 
 app.get("/", (c) => {
@@ -471,12 +493,14 @@ async function generateFeedXml(env: Env, origin: string): Promise<string> {
 
     return `
     <item>
-      <title>${escapeXml(`[${article.category}] ${article.title}`)}</title>
+      <title>${freshnessEmoji(article.published_at || article.created_at)}${categoryEmoji(article.category)} [${article.category}] ${article.title}</title>
       <link>${escapeXml(article.url)}</link>
       <guid isPermaLink="false">${escapeXml(article.url)}</guid>
       <pubDate>${new Date(article.created_at || Date.now()).toUTCString()}</pubDate>
 
       <description><![CDATA[
+投稿日: ${formatJst(article.published_at || article.created_at)}
+
 重要度: ${article.relevance_score}/5
 
 要約:
@@ -537,4 +561,76 @@ function toDbText(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function formatJst(dateString: string): string {
+  try {
+    return new Date(dateString).toLocaleString("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+
+function freshnessEmoji(dateString: string): string {
+  try {
+    const now = Date.now();
+    const target = new Date(dateString).getTime();
+
+    if (Number.isNaN(target)) {
+      return "⬜";
+    }
+
+    const diffHours = (now - target) / (1000 * 60 * 60);
+
+    // 24時間以内
+    if (diffHours <= 24) {
+      return "🟥";
+    }
+
+    // 3日以内
+    if (diffHours <= 72) {
+      return "🟨";
+    }
+
+    return "⬜";
+
+  } catch {
+    return "⬜";
+  }
+}
+
+function categoryEmoji(category: string): string {
+  switch (category) {
+    case "GPU":
+      return "🖥️";
+
+    case "Cloud":
+      return "☁️";
+
+    case "Security":
+      return "🔒";
+
+    case "Networking":
+      return "🌐";
+
+    case "AI Factory":
+      return "🏭";
+
+    case "HPC":
+      return "⚡";
+
+    case "Robotics":
+      return "🤖";
+
+    default:
+      return "📰";
+  }
 }
