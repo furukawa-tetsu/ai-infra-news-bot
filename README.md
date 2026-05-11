@@ -1,155 +1,196 @@
 # AI Infra News Bot
 
-AI infrastructure news aggregation and summarization bot built with Cloudflare Workers, D1, OpenAI API, and Slack RSS integration.
+AI infrastructure focused news aggregation and intelligence feed built on Cloudflare Workers.
 
-This bot periodically collects AI infrastructure related news from various RSS/Atom feeds, analyzes and categorizes them using OpenAI, stores them into Cloudflare D1, and exposes a summarized RSS feed that can be subscribed to from Slack RSS App or other RSS readers.
+This project collects RSS feeds related to:
+
+* AI Infrastructure
+* GPU clusters
+* AI Factory
+* HPC
+* Cloud / Edge
+* Networking
+* Security
+* Robotics infrastructure
+* Sovereign AI
+
+The system uses OpenAI to:
+
+* classify articles
+* summarize articles
+* estimate strategic relevance
+* generate AI infrastructure implications
+
+Selected articles are then:
+
+* stored into Cloudflare D1
+* exposed as an RSS feed
+* consumed by Slack RSS App
 
 ---
 
+# Example RSS Output
+
+```txt
+🟥🏭 [AI Factory] NVIDIA launches ...
+
+投稿日:
+2026/05/09 14:22
+
+Executive Summary:
+NVIDIA announced ...
+
+Technical Summary:
+- ...
+- ...
+- ...
+
+Implication:
+AI Factory competition is shifting toward network architecture optimization.
+```
+
 # Architecture
 
-```text
-External RSS / Atom feeds
-↓
-Cloudflare Workers Cron Trigger
-↓
-OpenAI API (Batch Analysis)
-↓
+```txt
+External RSS Feeds
+        ↓
+Cloudflare Workers Cron
+        ↓
+RSS Collection
+        ↓
+OpenAI Batch Analysis
+        ↓
+Ranking / Filtering
+        ↓
 Cloudflare D1
-↓
-feed.xml generation
-↓
-Slack RSS App / RSS Reader
+        ↓
+/feed.xml
+        ↓
+Slack RSS App
 ```
 
 ---
 
 # Features
 
-* AI infrastructure news aggregation
-* OpenAI-based article categorization and summarization
-* Batch analysis (20 articles per API request)
-* Cloudflare Workers serverless architecture
-* Cloudflare D1 persistence
-* RSS feed generation
-* Slack RSS App integration
-* Duplicate article prevention
-* Scheduled execution using Cloudflare Cron Triggers
+## RSS Aggregation
+
+Collects RSS / Atom feeds from:
+
+* NVIDIA
+* Cloudflare
+* AWS
+* Google Cloud
+* Azure
+* OpenAI
+* Anthropic
+* Hugging Face
+* HPCWire
+* The Register
+* Kubernetes
+* arXiv
+* etc.
+
+---
+
+## AI-based Classification
+
+Each article is analyzed using OpenAI.
+
+The system extracts:
+
+* relevance score
+* category
+* executive summary
+* technical summary
+* strategic implication
+
+Categories include:
+
+* GPU
+* AI Factory
+* HPC
+* Cloud
+* Networking
+* Security
+* Robotics
+* Policy
+* Storage
+* Edge
+
+---
+
+## Batch Processing
+
+Instead of:
+
+```txt
+1 article = 1 API call
+```
+
+the system processes:
+
+```txt
+20 articles = 1 API call
+```
+
+Benefits:
+
+* lower OpenAI cost
+* avoids RPM limits
+* faster execution
+* lower Worker execution time
+
+---
+
+## Intelligent Ranking
+
+Articles are ranked using:
+
+* AI relevance score
+* freshness
+* category weight
+
+The system then selects:
+
+```txt
+Top 5 most important articles
+```
+
+for RSS output.
+
+---
+
+## Freshness Visualization
+
+Feed titles include freshness emojis.
+
+| Emoji | Meaning       |
+| ----- | ------------- |
+| 🟥    | within 24h    |
+| 🟨    | within 3 days |
+| ⬜     | older         |
+
+Example:
+
+```txt
+🟥🏭 [AI Factory] NVIDIA launches ...
+```
 
 ---
 
 # Tech Stack
 
-* Cloudflare Workers
-* Cloudflare D1
-* Cloudflare R2 (optional)
-* OpenAI API
-* Hono
-* TypeScript
-* Slack RSS App
-* RSS / Atom feeds
-
----
-
-# Categories
-
-The bot classifies articles into categories such as:
-
-* GPU
-* HPC
-* Cloud
-* Networking
-* Storage
-* Security
-* Robotics
-* AI Factory
-* Policy
-* Edge
-
----
-
-# RSS Sources
-
-Example feeds:
-
-## Cloud / Edge
-
-* Cloudflare Blog
-* AWS Machine Learning Blog
-* Google Cloud AI Blog
-* Microsoft Azure Blog
-
-## GPU / AI Factory
-
-* NVIDIA Blog
-* NVIDIA Developer Blog
-* AMD
-
-## AI Labs
-
-* OpenAI
-* Anthropic
-* Hugging Face
-
-## HPC / Infrastructure
-
-* HPCwire
-* The Register AI/ML
-
----
-
-# Scheduling
-
-The Worker is triggered periodically using Cloudflare Cron Triggers.
-
-Current schedule (JST):
-
-* 07:00
-* 12:00
-* 17:00
-* 17:30
-
-Cron expressions are configured in UTC.
-
----
-
-# Batch Processing
-
-To reduce OpenAI API cost and avoid RPM limits, articles are analyzed in batches.
-
-## Before
-
-```text
-20 articles → 20 API requests
-```
-
-## After
-
-```text
-20 articles → 1 API request
-```
-
-This significantly reduces:
-
-* API cost
-* OpenAI RPM pressure
-* Worker execution time
-
----
-
-# Project Structure
-
-```text
-.
-├── src/
-│   └── index.ts
-├── migrations/
-│   ├── 0001_create_articles.sql
-│   └── 0002_add_implication.sql
-├── wrangler.jsonc
-├── package.json
-└── README.md
-```
+| Layer          | Technology         |
+| -------------- | ------------------ |
+| Runtime        | Cloudflare Workers |
+| Database       | Cloudflare D1      |
+| Object Storage | Cloudflare R2      |
+| AI             | OpenAI API         |
+| Feed Parsing   | fast-xml-parser    |
+| Framework      | Hono               |
+| Deployment     | Wrangler           |
+| Notification   | Slack RSS App      |
 
 ---
 
@@ -161,59 +202,53 @@ This significantly reduces:
 npm install
 ```
 
+---
+
+## Environment variables
+
+Create `.dev.vars`
+
+```env
+OPENAI_API_KEY=sk-xxxxx
+```
+
+---
+
 ## Run locally
 
 ```bash
 npm run dev
 ```
 
-## Run scheduled event locally
+---
+
+## Manual pipeline execution
 
 ```bash
-npx wrangler dev --test-scheduled
-```
-
-Trigger scheduled event:
-
-```bash
-curl "http://localhost:8787/__scheduled?cron=0+3+*+*+*"
+curl http://localhost:8787/run
 ```
 
 ---
 
-# Environment Variables
+## Test RSS feed
 
-Create `.dev.vars`:
-
-```env
-OPENAI_API_KEY=sk-xxxxxxxx
+```bash
+curl http://localhost:8787/feed.xml
 ```
 
 ---
 
-# D1 Setup
+# Deployment
 
-Create D1 database:
-
-```bash
-npx wrangler d1 create ai_infra_news
-```
-
-Apply migrations locally:
+## Login to Cloudflare
 
 ```bash
-npx wrangler d1 migrations apply ai_infra_news --local
-```
-
-Apply migrations remotely:
-
-```bash
-npx wrangler d1 migrations apply ai_infra_news --remote
+npx wrangler login
 ```
 
 ---
 
-# Deploy
+## Deploy
 
 ```bash
 npx wrangler deploy
@@ -221,74 +256,98 @@ npx wrangler deploy
 
 ---
 
-# RSS Feed
+## Production endpoints
 
-Example endpoint:
-
-```text
-https://<your-worker>.workers.dev/feed.xml
+```txt
+https://ai-infra-news-bot.ai-infra-news.workers.dev/run
+https://ai-infra-news-bot.ai-infra-news.workers.dev/feed.xml
 ```
 
-This RSS feed can be subscribed to from Slack RSS App.
+---
+
+# Cron Schedule
+
+Configured for JST:
+
+* 07:00
+* 12:00
+* 18:00
+
+Example configuration:
+
+```jsonc
+"triggers": {
+  "crons": [
+    "0 22 * * *",
+    "0 3 * * *",
+    "0 9 * * *"
+  ]
+}
+```
+
+---
+
+# Slack Integration
+
+This project does NOT use Slack Incoming Webhooks.
+
+Instead:
+
+```txt
+/feed.xml
+```
+
+is consumed by Slack RSS App.
 
 Example:
 
-```text
-/feed subscribe https://<your-worker>.workers.dev/feed.xml
+```txt
+/feed subscribe https://ai-infra-news-bot.ai-infra-news.workers.dev/feed.xml
 ```
+
+Benefits:
+
+* no Slack App approval required
+* no OAuth
+* no Bot token
+* simple deployment
 
 ---
 
-# API Endpoints
+# D1 Migration
 
-## Run pipeline manually
-
-```text
-GET /run
-```
-
-## RSS feed
-
-```text
-GET /feed.xml
-```
-
----
-
-# Logging
-
-Realtime logs:
+## Apply local migrations
 
 ```bash
-npx wrangler tail
+npx wrangler d1 migrations apply ai_infra_news --local
 ```
 
 ---
 
-# Known Challenges
+## Apply remote migrations
 
-* RSS format inconsistencies
-* Slack RSS App new-item detection
-* Duplicate URL normalization
-* OpenAI API RPM limits
-* RSS `guid` / `pubDate` behavior
+```bash
+npx wrangler d1 migrations apply ai_infra_news --remote
+```
+
+---
 
 ---
 
 # Future Improvements
 
-* Embedding-based deduplication
-* Article full-text fetching
-* Obsidian markdown export
-* Weekly AI infrastructure report generation
-* GitHub release monitoring
-* arXiv integration
-* Personalized weighting for topics such as:
+Planned improvements:
 
-  * ABCI
-  * Sovereign AI
-  * AI Factory
-  * GPU cluster operations
+* article body extraction
+* embedding-based deduplication
+* Obsidian markdown export
+* GitHub auto-sync
+* weekly AI infra reports
+* source trust scoring
+* novelty detection
+* personalized ranking
+* ABCI relevance scoring
+* AI Factory strategic radar
 
 ---
 
