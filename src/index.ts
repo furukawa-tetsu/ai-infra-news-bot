@@ -15,9 +15,11 @@ import { Hono } from "hono";
 import { XMLParser } from "fast-xml-parser";
 import OpenAI from "openai";
 
+
 type Env = {
   OPENAI_API_KEY: string;
   DB: D1Database;
+  ai_infra_news_md: R2Bucket;
 };
 
 type Article = {
@@ -119,6 +121,80 @@ export default {
     await runPipeline(env);
   },
 };
+
+/* Markdown 生成関数 */
+app.get("/save", async (c) => {
+  const id = c.req.query("id");
+
+  if (!id) {
+    return c.text("Missing id", 400);
+  }
+
+  const article = await c.env.DB.prepare(`
+    SELECT *
+    FROM articles
+    WHERE id = ?
+  `).bind(id).first();
+
+  if (!article) {
+    return c.text("Article not found", 404);
+  }
+
+  // すでにR2保存済みなら、それを返す
+  if (article.saved_markdown_path) {
+    const object = await c.env.ai_infra_news_md.get(String(article.saved_markdown_path));
+
+    if (object) {
+      return new Response(await object.text(), {
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+        },
+      });
+    }
+  }
+
+  // 未保存なら詳細解説を生成
+  const detailMarkdown = await generateDetailedExplanation(c.env, article);
+
+  const markdown = generateObsidianMarkdownWithDetail(article, detailMarkdown);
+
+  const path = await saveMarkdownToR2(c.env, article, markdown);
+
+  await c.env.DB.prepare(`
+    UPDATE articles
+    SET saved_markdown_path = ?, saved_at = ?
+    WHERE id = ?
+  `).bind(
+    path,
+    new Date().toISOString(),
+    id
+  ).run();
+
+  return new Response(markdown, {
+    headers: {
+      "Content-Type": "text/markdown; charset=utf-8",
+    },
+  });
+});
+
+/* 詳細解説付きMarkdown生成関数 */
+function generateObsidianMarkdownWithDetail(article: any, detailMarkdown: string): string {
+  return `---
+title: "${escapeYaml(article.title)}"
+source: "${escapeYaml(article.source)}"
+url: "${article.url}"
+published: "${article.published_at ?? ""}"
+category: "${article.category}"
+relevance: ${article.relevance_score}
+saved_at: "${new Date().toISOString()}"
+tags:
+  - ai-infra
+  - ${String(article.category).toLowerCase().replaceAll(" ", "-")}
+---
+
+${detailMarkdown}
+`;
+}
 
 async function runPipeline(env: Env) {
   const articles = await collectFeeds();
@@ -520,8 +596,8 @@ indexは入力記事のindexをそのまま使ってください。
 
 async function generateFeedXml(env: Env, origin: string): Promise<string> {
   const rows = await env.DB.prepare(`
-    SELECT title, url, source, published_at, summary, category,
-           relevance_score, implication, created_at
+    SELECT id, title, url, source, published_at, summary, category,
+          relevance_score, implication, created_at
     FROM articles
     WHERE relevance_score >= 3
     ORDER BY created_at DESC
@@ -548,6 +624,9 @@ ${summary.map((x) => `- ${x}`).join("\n")}
 
 示唆:
 ${article.implication}
+
+Obsidian保存用Markdown:
+${origin}/save?id=${article.id}
 
 Source: ${article.source}
       ]]></description>
@@ -738,4 +817,155 @@ function categoryWeight(category: string): number {
     default:
       return 1;
   }
+}
+
+/* YAMLエスケープ関数 */
+function escapeYaml(value: string): string {
+  return String(value ?? "").replaceAll('"', '\\"');
+}
+
+/* Markdown 生成関数 */
+function generateObsidianMarkdown(article: any): string {
+  const summary = safeJsonArray(article.summary);
+
+  return `---
+title: "${escapeYaml(article.title)}"
+source: "${escapeYaml(article.source)}"
+url: "${article.url}"
+published: "${article.published_at ?? ""}"
+category: "${article.category}"
+relevance: ${article.relevance_score}
+tags:
+  - ai-infra
+  - ${String(article.category).toLowerCase().replaceAll(" ", "-")}
+---
+
+# ${article.title}
+
+## Source
+
+${article.url}
+
+## Published
+
+${formatJst(article.published_at || article.created_at)}
+
+## Category
+
+${article.category}
+
+## Relevance
+
+${article.relevance_score}/5
+
+## Summary
+
+${summary.map((x: string) => `- ${x}`).join("\n")}
+
+## Implication
+
+${article.implication}
+
+## Notes
+
+- 
+`;
+}
+
+/* Obsidian保存用Markdown生成関数（旧） */
+async function generateDetailedExplanation(env: Env, article: any): Promise<string> {
+  const openai = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+  });
+
+  const response = await openai.responses.create({
+    model: "gpt-4.1-mini",
+    input: [
+      {
+        role: "system",
+        content: `
+あなたはAIインフラ専門のリサーチアナリストです。
+記事情報をもとに、Obsidianに保存するための日本語Markdown解説を作成してください。
+
+重視する観点:
+- AI Factory
+- GPUクラスタ
+- HPC
+- クラウド/エッジ
+- ネットワーク/ストレージ
+- セキュリティ
+- Sovereign AI
+- ロボティクス基盤
+- ABCIへの示唆
+
+出力はMarkdown本文のみ。
+`,
+      },
+      {
+        role: "user",
+        content: `
+title: ${article.title}
+source: ${article.source}
+url: ${article.url}
+published_at: ${article.published_at}
+category: ${article.category}
+relevance_score: ${article.relevance_score}
+summary: ${article.summary}
+implication: ${article.implication}
+
+以下の構成で情報密度を高く書いてください。
+
+# ${article.title}
+
+## 1. Executive Summary
+3〜5行で概要。
+
+## 2. What Happened
+記事で何が起きたか。
+
+## 3. Technical Point
+技術的に重要な点。
+
+## 4. Why It Matters for AI Infrastructure
+AIインフラ観点でなぜ重要か。
+
+## 5. Implication for ABCI / AI Factory
+ABCI、GPUクラスタ、AI Factoryへの示唆。
+
+## 6. Watch Points
+今後追うべき観点。
+
+## 7. Source
+URLを記載。
+`,
+      },
+    ],
+  });
+
+  return response.output_text;
+}
+
+/* R2にMarkdownを保存する関数 */
+async function saveMarkdownToR2(env: Env, article: any, markdown: string): Promise<string> {
+  const date = new Date().toISOString().slice(0, 10);
+
+  const slug = slugify(article.title);
+
+  const path = `obsidian/${date}/${slug}-${article.id}.md`;
+
+  await env.ai_infra_news_md.put(path, markdown, {
+    httpMetadata: {
+      contentType: "text/markdown; charset=utf-8",
+    },
+  });
+
+  return path;
+}
+
+function slugify(value: string): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
 }
